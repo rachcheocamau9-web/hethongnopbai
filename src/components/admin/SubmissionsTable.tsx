@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Submission, Competition } from '../../types';
 import { exportSubmissionsToExcel } from '../../lib/excel';
+import { downloadSingleSubmissionFile, exportSubmissionsZip, getSubmissionFileName } from '../../lib/exportFiles';
 import { 
   FileSpreadsheet, 
   Search, 
@@ -11,8 +12,10 @@ import {
   Image as ImageIcon, 
   User, 
   Calendar, 
-  CheckCircle2,
-  Inbox
+  Inbox,
+  Download,
+  FolderDown,
+  Loader2
 } from 'lucide-react';
 
 interface SubmissionsTableProps {
@@ -30,6 +33,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
 }) => {
   const [selectedCompId, setSelectedCompId] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isExportingZip, setIsExportingZip] = useState<boolean>(false);
 
   // Filter logic
   const filteredSubmissions = submissions.filter((sub) => {
@@ -50,6 +54,23 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
       : undefined;
     
     exportSubmissionsToExcel(filteredSubmissions, compFilter);
+  };
+
+  const handleExportZip = async () => {
+    setIsExportingZip(true);
+    try {
+      const selectedComp = competitions.find(c => c.id === selectedCompId);
+      const zipTitle = selectedComp 
+        ? `Bai_Nop_${selectedComp.title}` 
+        : 'Tat_Ca_Bai_Nop_Hinh_Anh_va_PDF';
+      
+      await exportSubmissionsZip(filteredSubmissions, zipTitle);
+    } catch (err) {
+      console.error('Export ZIP error:', err);
+      alert('Có lỗi xảy ra khi nén và xuất file ZIP.');
+    } finally {
+      setIsExportingZip(false);
+    }
   };
 
   const formatDate = (isoStr: string) => {
@@ -78,20 +99,48 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
           </p>
         </div>
 
-        {/* Excel Export Button */}
-        <button
-          id="btn-export-excel-main"
-          onClick={handleExportExcel}
-          disabled={filteredSubmissions.length === 0}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all ${
-            filteredSubmissions.length === 0
-              ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-              : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 hover:scale-[1.01]'
-          }`}
-        >
-          <FileSpreadsheet className="w-4 h-4" />
-          <span>Xuất File Excel (.xlsx)</span>
-        </button>
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* ZIP Export Button */}
+          <button
+            id="btn-export-zip-main"
+            onClick={handleExportZip}
+            disabled={filteredSubmissions.length === 0 || isExportingZip}
+            title="Tải tất cả file hình ảnh & PDF đã nộp (Tự động đặt tên file theo Họ & Tên người gửi)"
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all ${
+              filteredSubmissions.length === 0 || isExportingZip
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 hover:scale-[1.01]'
+            }`}
+          >
+            {isExportingZip ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Đang nén ZIP...</span>
+              </>
+            ) : (
+              <>
+                <FolderDown className="w-4 h-4" />
+                <span>Xuất ZIP Tất Cả File (Đặt Tên Theo Họ Tên)</span>
+              </>
+            )}
+          </button>
+
+          {/* Excel Export Button */}
+          <button
+            id="btn-export-excel-main"
+            onClick={handleExportExcel}
+            disabled={filteredSubmissions.length === 0}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all ${
+              filteredSubmissions.length === 0
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 hover:scale-[1.01]'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Xuất Báo Cáo Excel (.xlsx)</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter & Search Bar */}
@@ -212,11 +261,20 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
                       <div className="flex items-center justify-center space-x-1">
                         <button
                           onClick={() => onPreviewFile(sub)}
-                          title="Xem / Tải file"
+                          title="Xem file trực tiếp"
                           className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-semibold text-xs flex items-center gap-1 transition-colors"
                         >
                           <Eye className="w-3.5 h-3.5" />
-                          <span>Xem file</span>
+                          <span>Xem</span>
+                        </button>
+
+                        <button
+                          onClick={() => downloadSingleSubmissionFile(sub)}
+                          title={`Tải file dưới tên người gửi (${getSubmissionFileName(sub)})`}
+                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-semibold text-xs flex items-center gap-1 transition-colors"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Tải file</span>
                         </button>
 
                         <button

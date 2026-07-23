@@ -1,6 +1,7 @@
 import React from 'react';
 import { Submission } from '../../types';
-import { X, Download, FileText, Image as ImageIcon, Calendar, User, Phone, Mail, Award } from 'lucide-react';
+import { X, Download, FileText, Image as ImageIcon, Calendar, User, Award } from 'lucide-react';
+import { downloadSingleSubmissionFile, getSubmissionFileName } from '../../lib/exportFiles';
 
 interface FilePreviewModalProps {
   submission: Submission | null;
@@ -12,14 +13,10 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ submission, 
 
   const isPdf = submission.fileType.includes('pdf') || submission.fileName.toLowerCase().endsWith('.pdf');
   const isImage = submission.fileType.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(submission.fileName);
+  const formattedFileName = getSubmissionFileName(submission);
 
   const handleDownload = () => {
-    const a = document.createElement('a');
-    a.href = submission.fileData;
-    a.download = submission.fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    downloadSingleSubmissionFile(submission);
   };
 
   return (
@@ -33,11 +30,11 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ submission, 
               {isImage ? <ImageIcon className="w-5 h-5" /> : <FileText className="w-5 h-5 text-rose-400" />}
             </div>
             <div className="truncate">
-              <h3 className="font-bold text-sm sm:text-base truncate text-slate-100" title={submission.fileName}>
-                {submission.fileName}
+              <h3 className="font-bold text-sm sm:text-base truncate text-slate-100" title={formattedFileName}>
+                {formattedFileName}
               </h3>
               <p className="text-xs text-slate-400 truncate">
-                Thí sinh: <strong className="text-white">{submission.fullName}</strong> • {submission.competitionTitle}
+                Tên gốc: {submission.fileName} • Thí sinh: <strong className="text-white">{submission.fullName}</strong>
               </p>
             </div>
           </div>
@@ -45,10 +42,11 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ submission, 
           <div className="flex items-center space-x-2 shrink-0">
             <button
               onClick={handleDownload}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+              title={`Tải file dưới tên: ${formattedFileName}`}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md hover:scale-[1.02]"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>Tải file</span>
+              <Download className="w-4 h-4" />
+              <span>Tải file ({submission.fullName})</span>
             </button>
 
             <button

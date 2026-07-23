@@ -15,7 +15,7 @@ const DEFAULT_SUBMISSIONS = [
     fileName: "Thiet_Ke_Giao_Dien_NguyenVanAn.pdf",
     fileSize: 2458000,
     fileType: "application/pdf",
-    fileData: "data:application/pdf;base64,JVBERi0xLjQKJ...",
+    fileData: "data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iaiA8PAovVHlwZSAvQ2F0YWxvZwovUGFnZXMgMiAwIFIgPj4gZW5kb2JqCjIgMCBvYmogPDAKL1R5cGUgL1BhZ2VzCi9Db3VudCAxCi9LaWRzIFsgMyAwIFIgXSA+PiBlbmRvYmoKMyAwIG9iaiA8PAovVHlwZSAvUGFnZQovUGFyZW50IDIgMCBSCi9NZWRpYUJveCBbIDAgMCA2MTIgNzkyIF0KL1Jlc291cmNlcyA8PCA+Pgo+PiBlbmRvYmoKdHJhaWxlciA8PAovUm9vdCAxIDAgUgo+PgpzdGFydHhyZWYKMTczCiUlRU9G",
     submittedAt: "2026-07-20T14:30:00.000Z",
     status: "approved",
   },
