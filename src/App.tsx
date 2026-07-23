@@ -43,22 +43,50 @@ export default function App() {
   // Submission result modal
   const [lastSubmission, setLastSubmission] = useState<Submission | null>(null);
 
-  // Initial Data Fetch
+  // Real-time Data Fetching & Sync Polling
   useEffect(() => {
-    async function loadData() {
+    let isMounted = true;
+
+    async function syncData(silent = false) {
       try {
-        setIsLoading(true);
-        const compList = await getCompetitions();
-        const subList = await getSubmissions();
-        setCompetitions(compList);
-        setSubmissions(subList);
+        if (!silent) setIsLoading(true);
+        const [compList, subList] = await Promise.all([
+          getCompetitions(),
+          getSubmissions()
+        ]);
+        if (isMounted) {
+          setCompetitions(compList);
+          setSubmissions(subList);
+        }
       } catch (err) {
-        console.error('Failed to load initial data:', err);
+        console.error('Failed to sync data from server:', err);
       } finally {
-        setIsLoading(false);
+        if (isMounted && !silent) {
+          setIsLoading(false);
+        }
       }
     }
-    loadData();
+
+    // Initial load
+    syncData(false);
+
+    // Continuous background sync polling every 3 seconds for real-time multi-device updates
+    const intervalId = setInterval(() => {
+      syncData(true);
+    }, 3000);
+
+    // Sync immediately when browser window regains focus
+    const handleFocus = () => {
+      syncData(true);
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   // Admin login handler
