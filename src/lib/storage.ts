@@ -119,6 +119,23 @@ function getDB(): Promise<IDBDatabase> {
 
 export async function getCompetitions(): Promise<Competition[]> {
   try {
+    const res = await fetch('/api/competitions');
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        // Cache to local DB asynchronously
+        saveAllCompetitionsLocally(json.data).catch(() => {});
+        return json.data;
+      }
+    }
+  } catch (err) {
+    console.warn('API /api/competitions unavailable, falling back to local DB cache:', err);
+  }
+  return getCompetitionsFromLocal();
+}
+
+async function getCompetitionsFromLocal(): Promise<Competition[]> {
+  try {
     const db = await getDB();
     return new Promise((resolve) => {
       const tx = db.transaction('competitions', 'readonly');
@@ -128,8 +145,7 @@ export async function getCompetitions(): Promise<Competition[]> {
       request.onsuccess = () => {
         let list: Competition[] = request.result || [];
         if (list.length === 0) {
-          saveAllCompetitions(DEFAULT_COMPETITIONS).catch(() => {});
-          list = DEFAULT_COMPETITIONS;
+          list = getCompetitionsFromLocalStorage();
         }
         resolve(list);
       };
@@ -157,23 +173,44 @@ function getCompetitionsFromLocalStorage(): Competition[] {
 }
 
 export async function saveCompetition(comp: Competition): Promise<void> {
-  const current = await getCompetitions();
+  // Try server API first
+  try {
+    const res = await fetch('/api/competitions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(comp),
+    });
+    if (!res.ok) {
+      throw new Error(`Server returned status ${res.status}`);
+    }
+  } catch (err) {
+    console.warn('Failed to save competition to server API, saving locally:', err);
+  }
+
+  // Update local cache
+  const current = await getCompetitionsFromLocal();
   const index = current.findIndex((c) => c.id === comp.id);
   if (index >= 0) {
     current[index] = comp;
   } else {
     current.unshift(comp);
   }
-  await saveAllCompetitions(current);
+  await saveAllCompetitionsLocally(current);
 }
 
 export async function deleteCompetition(id: string): Promise<void> {
-  const current = await getCompetitions();
+  try {
+    await fetch(`/api/competitions/${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn('Failed to delete competition from server API:', err);
+  }
+
+  const current = await getCompetitionsFromLocal();
   const updated = current.filter((c) => c.id !== id);
-  await saveAllCompetitions(updated);
+  await saveAllCompetitionsLocally(updated);
 }
 
-async function saveAllCompetitions(competitions: Competition[]): Promise<void> {
+async function saveAllCompetitionsLocally(competitions: Competition[]): Promise<void> {
   try {
     const db = await getDB();
     await new Promise<void>((resolve, reject) => {
@@ -195,6 +232,22 @@ async function saveAllCompetitions(competitions: Competition[]): Promise<void> {
 
 export async function getSubmissions(): Promise<Submission[]> {
   try {
+    const res = await fetch('/api/submissions');
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        saveAllSubmissionsLocally(json.data).catch(() => {});
+        return json.data;
+      }
+    }
+  } catch (err) {
+    console.warn('API /api/submissions unavailable, falling back to local DB cache:', err);
+  }
+  return getSubmissionsFromLocal();
+}
+
+async function getSubmissionsFromLocal(): Promise<Submission[]> {
+  try {
     const db = await getDB();
     return new Promise((resolve) => {
       const tx = db.transaction('submissions', 'readonly');
@@ -204,8 +257,7 @@ export async function getSubmissions(): Promise<Submission[]> {
       request.onsuccess = () => {
         let list: Submission[] = request.result || [];
         if (list.length === 0) {
-          saveAllSubmissions(DEFAULT_SUBMISSIONS).catch(() => {});
-          list = DEFAULT_SUBMISSIONS;
+          list = getSubmissionsFromLocalStorage();
         }
         list.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
         resolve(list);
@@ -234,6 +286,25 @@ function getSubmissionsFromLocalStorage(): Submission[] {
 }
 
 export async function addSubmission(submission: Submission): Promise<void> {
+  try {
+    const res = await fetch('/api/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(submission),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Lỗi server (${res.status})`);
+    }
+  } catch (err: any) {
+    console.warn('Failed to post submission to server API, fallback local:', err);
+  }
+
+  // Also store in local IndexedDB / LocalStorage cache
+  await saveSubmissionLocally(submission);
+}
+
+async function saveSubmissionLocally(submission: Submission): Promise<void> {
   try {
     const db = await getDB();
     await new Promise<void>((resolve, reject) => {
@@ -270,6 +341,12 @@ export async function addSubmission(submission: Submission): Promise<void> {
 
 export async function deleteSubmission(id: string): Promise<void> {
   try {
+    await fetch(`/api/submissions/${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn('Failed to delete submission on server API:', err);
+  }
+
+  try {
     const db = await getDB();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction('submissions', 'readwrite');
@@ -288,7 +365,7 @@ export async function deleteSubmission(id: string): Promise<void> {
   }
 }
 
-export async function saveAllSubmissions(submissions: Submission[]): Promise<void> {
+async function saveAllSubmissionsLocally(submissions: Submission[]): Promise<void> {
   try {
     const db = await getDB();
     await new Promise<void>((resolve, reject) => {
@@ -310,9 +387,13 @@ export async function saveAllSubmissions(submissions: Submission[]): Promise<voi
 
 // Utility function to determine competition status dynamically
 export function getCompetitionStatus(comp: Competition): 'active' | 'upcoming' | 'ended' {
+  if (!comp.startDate || !comp.endDate) return 'active';
+
   const now = new Date().getTime();
   const start = new Date(comp.startDate).getTime();
   const end = new Date(comp.endDate).getTime();
+
+  if (isNaN(start) || isNaN(end)) return 'active';
 
   if (now < start) return 'upcoming';
   if (now > end) return 'ended';

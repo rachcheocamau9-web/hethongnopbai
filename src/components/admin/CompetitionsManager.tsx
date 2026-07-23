@@ -39,17 +39,23 @@ export const CompetitionsManager: React.FC<CompetitionsManagerProps> = ({
 
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Helper for formatting local datetime for input[type="datetime-local"]
+  const toLocalDatetimeString = (d: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   // Open modal for adding new competition
   const handleOpenAdd = () => {
     setEditingComp(null);
     setTitle('');
     setDescription('');
     
-    // Default start date = today, default end date = +30 days
+    // Default start date = today local time, default end date = +30 days local time
     const now = new Date();
     const future = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    setStartDate(now.toISOString().slice(0, 16));
-    setEndDate(future.toISOString().slice(0, 16));
+    setStartDate(toLocalDatetimeString(now));
+    setEndDate(toLocalDatetimeString(future));
     
     setMaxFileSizeMb(25);
     setAllowedPdf(true);

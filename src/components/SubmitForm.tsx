@@ -26,6 +26,20 @@ export const SubmitForm: React.FC<SubmitFormProps> = ({ competitions, onSubmissi
     activeCompetitions.length > 0 ? activeCompetitions[0].id : (competitions[0]?.id || '')
   );
 
+  useEffect(() => {
+    if (competitions.length > 0) {
+      const exists = competitions.some(c => c.id === selectedCompId);
+      if (!selectedCompId || !exists) {
+        const activeComps = competitions.filter(c => getCompetitionStatus(c) === 'active');
+        if (activeComps.length > 0) {
+          setSelectedCompId(activeComps[0].id);
+        } else {
+          setSelectedCompId(competitions[0].id);
+        }
+      }
+    }
+  }, [competitions, selectedCompId]);
+
   const [fullName, setFullName] = useState('');
 
   // File state
