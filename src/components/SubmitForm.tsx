@@ -172,16 +172,16 @@ export const SubmitForm: React.FC<SubmitFormProps> = ({ competitions, onSubmissi
         status: 'pending',
       };
 
-      onSubmissionSuccess(newSubmission);
+      await onSubmissionSuccess(newSubmission);
 
       // Reset form
       setFullName('');
       setFile(null);
       setFilePreviewUrl(null);
 
-    } catch (err) {
-      console.error(err);
-      setFormError('Có lỗi xảy ra khi xử lý file tài liệu. Vui lòng thử lại.');
+    } catch (err: any) {
+      console.error('Submission error:', err);
+      setFormError(err?.message || 'Có lỗi xảy ra khi xử lý file tài liệu. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }

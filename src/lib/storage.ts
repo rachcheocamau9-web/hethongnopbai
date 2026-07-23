@@ -77,9 +77,18 @@ const DEFAULT_SUBMISSIONS: Submission[] = [
 const DB_NAME = 'TroLyNopTaiLieuDB';
 const DB_VERSION = 1;
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+function getDB(): Promise<IDBDatabase> {
+  if (dbPromise) return dbPromise;
+
+  dbPromise = new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      return reject(new Error('IndexedDB is not supported in this environment'));
+    }
+
+    const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains('submissions')) {
@@ -89,39 +98,61 @@ function openDB(): Promise<IDBDatabase> {
         db.createObjectStore('competitions', { keyPath: 'id' });
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error || new Error('Failed to open IndexedDB'));
+    };
   });
+
+  return dbPromise;
 }
 
 export async function getCompetitions(): Promise<Competition[]> {
   try {
-    const db = await openDB();
-    const tx = db.transaction('competitions', 'readonly');
-    const store = tx.objectStore('competitions');
-    const request = store.getAll();
+    const db = await getDB();
     return new Promise((resolve) => {
+      const tx = db.transaction('competitions', 'readonly');
+      const store = tx.objectStore('competitions');
+      const request = store.getAll();
+
       request.onsuccess = () => {
-        let list: Competition[] = request.result;
-        if (!list || list.length === 0) {
-          // Seed defaults
-          saveAllCompetitions(DEFAULT_COMPETITIONS);
+        let list: Competition[] = request.result || [];
+        if (list.length === 0) {
+          saveAllCompetitions(DEFAULT_COMPETITIONS).catch(() => {});
           list = DEFAULT_COMPETITIONS;
         }
         resolve(list);
       };
+
       request.onerror = () => {
-        resolve(DEFAULT_COMPETITIONS);
+        resolve(getCompetitionsFromLocalStorage());
       };
     });
-  } catch (err) {
-    console.warn('IndexedDB unavailable, fallback to localStorage', err);
+  } catch {
+    return getCompetitionsFromLocalStorage();
+  }
+}
+
+function getCompetitionsFromLocalStorage(): Competition[] {
+  try {
     const stored = localStorage.getItem(COMPETITIONS_KEY);
     if (!stored) {
       localStorage.setItem(COMPETITIONS_KEY, JSON.stringify(DEFAULT_COMPETITIONS));
       return DEFAULT_COMPETITIONS;
     }
     return JSON.parse(stored);
+  } catch {
+    return DEFAULT_COMPETITIONS;
   }
 }
 
@@ -144,81 +175,136 @@ export async function deleteCompetition(id: string): Promise<void> {
 
 async function saveAllCompetitions(competitions: Competition[]): Promise<void> {
   try {
-    const db = await openDB();
-    const tx = db.transaction('competitions', 'readwrite');
-    const store = tx.objectStore('competitions');
-    store.clear();
-    competitions.forEach((c) => store.put(c));
+    const db = await getDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('competitions', 'readwrite');
+      const store = tx.objectStore('competitions');
+      store.clear();
+      competitions.forEach((c) => store.put(c));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
   } catch {
-    localStorage.setItem(COMPETITIONS_KEY, JSON.stringify(competitions));
+    try {
+      localStorage.setItem(COMPETITIONS_KEY, JSON.stringify(competitions));
+    } catch (e) {
+      console.warn('LocalStorage quota exceeded for competitions', e);
+    }
   }
 }
 
 export async function getSubmissions(): Promise<Submission[]> {
   try {
-    const db = await openDB();
-    const tx = db.transaction('submissions', 'readonly');
-    const store = tx.objectStore('submissions');
-    const request = store.getAll();
+    const db = await getDB();
     return new Promise((resolve) => {
+      const tx = db.transaction('submissions', 'readonly');
+      const store = tx.objectStore('submissions');
+      const request = store.getAll();
+
       request.onsuccess = () => {
-        let list: Submission[] = request.result;
-        if (!list || list.length === 0) {
-          // Seed defaults
-          saveAllSubmissions(DEFAULT_SUBMISSIONS);
+        let list: Submission[] = request.result || [];
+        if (list.length === 0) {
+          saveAllSubmissions(DEFAULT_SUBMISSIONS).catch(() => {});
           list = DEFAULT_SUBMISSIONS;
         }
-        // Sort descending by date
         list.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
         resolve(list);
       };
-      request.onerror = () => resolve(DEFAULT_SUBMISSIONS);
+
+      request.onerror = () => {
+        resolve(getSubmissionsFromLocalStorage());
+      };
     });
   } catch {
+    return getSubmissionsFromLocalStorage();
+  }
+}
+
+function getSubmissionsFromLocalStorage(): Submission[] {
+  try {
     const stored = localStorage.getItem(SUBMISSIONS_KEY);
     if (!stored) {
       localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(DEFAULT_SUBMISSIONS));
       return DEFAULT_SUBMISSIONS;
     }
     return JSON.parse(stored);
+  } catch {
+    return DEFAULT_SUBMISSIONS;
   }
 }
 
 export async function addSubmission(submission: Submission): Promise<void> {
   try {
-    const db = await openDB();
-    const tx = db.transaction('submissions', 'readwrite');
-    const store = tx.objectStore('submissions');
-    store.put(submission);
-  } catch {
-    const list = await getSubmissions();
-    list.unshift(submission);
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(list));
+    const db = await getDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('submissions', 'readwrite');
+      const store = tx.objectStore('submissions');
+      const req = store.put(submission);
+
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error || tx.error);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB put failed, falling back to localStorage safely', err);
+    try {
+      const list = getSubmissionsFromLocalStorage();
+      list.unshift(submission);
+      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(list));
+    } catch (quotaErr) {
+      console.warn('LocalStorage quota exceeded, storing submission metadata without large fileData', quotaErr);
+      try {
+        const lightweightSub = {
+          ...submission,
+          fileData: submission.fileData.substring(0, 100) + '... (Tệp đã được ghi nhận)'
+        };
+        const list = getSubmissionsFromLocalStorage();
+        list.unshift(lightweightSub);
+        localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(list));
+      } catch (e) {
+        console.error('Failed to write to localStorage altogether', e);
+      }
+    }
   }
 }
 
 export async function deleteSubmission(id: string): Promise<void> {
   try {
-    const db = await openDB();
-    const tx = db.transaction('submissions', 'readwrite');
-    const store = tx.objectStore('submissions');
-    store.delete(id);
+    const db = await getDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('submissions', 'readwrite');
+      const store = tx.objectStore('submissions');
+      const req = store.delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+      tx.onerror = () => reject(tx.error);
+    });
   } catch {
-    const list = await getSubmissions();
+    const list = getSubmissionsFromLocalStorage();
     const updated = list.filter((s) => s.id !== id);
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(updated));
+    try {
+      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(updated));
+    } catch {}
   }
 }
 
 export async function saveAllSubmissions(submissions: Submission[]): Promise<void> {
   try {
-    const db = await openDB();
-    const tx = db.transaction('submissions', 'readwrite');
-    const store = tx.objectStore('submissions');
-    store.clear();
-    submissions.forEach((s) => store.put(s));
+    const db = await getDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('submissions', 'readwrite');
+      const store = tx.objectStore('submissions');
+      store.clear();
+      submissions.forEach((s) => store.put(s));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
   } catch {
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(submissions));
+    try {
+      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(submissions));
+    } catch (e) {
+      console.warn('Failed to save all submissions to localStorage', e);
+    }
   }
 }
 
