@@ -51,11 +51,12 @@ export const CompetitionsManager: React.FC<CompetitionsManagerProps> = ({
     setTitle('');
     setDescription('');
     
-    // Default start date = today local time, default end date = +30 days local time
+    // Default start date = 1 hour ago local time (to guarantee immediate active status), default end date = +30 days local time
     const now = new Date();
-    const future = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    setStartDate(toLocalDatetimeString(now));
-    setEndDate(toLocalDatetimeString(future));
+    const pastStart = new Date(now.getTime() - 60 * 60 * 1000);
+    const futureEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    setStartDate(toLocalDatetimeString(pastStart));
+    setEndDate(toLocalDatetimeString(futureEnd));
     
     setMaxFileSizeMb(25);
     setAllowedPdf(true);

@@ -160,12 +160,28 @@ app.get("/api/health", (req, res) => {
 });
 
 // Competitions API Endpoints
-app.get("/api/competitions", (req, res) => {
-  const comps = readCompetitionsFile();
+app.get("/api/competitions", async (req, res) => {
+  let comps = readCompetitionsFile();
+  // Attempt Cloud KV sync
+  try {
+    const kvRes = await fetch("https://kvdb.io/6P7aX9mK1bQv3L0z8W9n/competitions", { cache: "no-store" });
+    if (kvRes.ok) {
+      const text = await kvRes.text();
+      if (text && text.trim().startsWith("[")) {
+        const cloudComps = JSON.parse(text);
+        if (Array.isArray(cloudComps) && cloudComps.length > 0) {
+          comps = cloudComps;
+          writeCompetitionsFile(comps);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Server Cloud KV sync warning:", e);
+  }
   res.json({ success: true, data: comps });
 });
 
-app.post("/api/competitions", (req, res) => {
+app.post("/api/competitions", async (req, res) => {
   const comp = req.body;
   if (!comp || !comp.id || !comp.title) {
     return res.status(400).json({ success: false, error: "Dữ liệu cuộc thi không hợp lệ" });
@@ -178,24 +194,62 @@ app.post("/api/competitions", (req, res) => {
     comps.unshift(comp);
   }
   writeCompetitionsFile(comps);
+
+  // Sync to Cloud KV
+  try {
+    await fetch("https://kvdb.io/6P7aX9mK1bQv3L0z8W9n/competitions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(comps)
+    });
+  } catch (e) {
+    console.warn("Failed to push competitions to Cloud KV:", e);
+  }
+
   res.json({ success: true, data: comp });
 });
 
-app.delete("/api/competitions/:id", (req, res) => {
+app.delete("/api/competitions/:id", async (req, res) => {
   const { id } = req.params;
   let comps = readCompetitionsFile();
   comps = comps.filter((c: any) => c.id !== id);
   writeCompetitionsFile(comps);
+
+  try {
+    await fetch("https://kvdb.io/6P7aX9mK1bQv3L0z8W9n/competitions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(comps)
+    });
+  } catch (e) {
+    console.warn("Failed to sync deleted competition to Cloud KV:", e);
+  }
+
   res.json({ success: true, id });
 });
 
 // Submissions API Endpoints
-app.get("/api/submissions", (req, res) => {
-  const subs = readSubmissionsFile();
+app.get("/api/submissions", async (req, res) => {
+  let subs = readSubmissionsFile();
+  try {
+    const kvRes = await fetch("https://kvdb.io/6P7aX9mK1bQv3L0z8W9n/submissions", { cache: "no-store" });
+    if (kvRes.ok) {
+      const text = await kvRes.text();
+      if (text && text.trim().startsWith("[")) {
+        const cloudSubs = JSON.parse(text);
+        if (Array.isArray(cloudSubs) && cloudSubs.length > 0) {
+          subs = cloudSubs;
+          writeSubmissionsFile(subs);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Server Cloud KV submissions fetch warning:", e);
+  }
   res.json({ success: true, data: subs });
 });
 
-app.post("/api/submissions", (req, res) => {
+app.post("/api/submissions", async (req, res) => {
   const sub = req.body;
   if (!sub || !sub.id || !sub.fullName) {
     return res.status(400).json({ success: false, error: "Dữ liệu bài nộp không hợp lệ" });
@@ -208,14 +262,37 @@ app.post("/api/submissions", (req, res) => {
     subs.unshift(sub);
   }
   writeSubmissionsFile(subs);
+
+  // Sync to Cloud KV
+  try {
+    await fetch("https://kvdb.io/6P7aX9mK1bQv3L0z8W9n/submissions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(subs)
+    });
+  } catch (e) {
+    console.warn("Failed to sync submission to Cloud KV:", e);
+  }
+
   res.json({ success: true, data: sub });
 });
 
-app.delete("/api/submissions/:id", (req, res) => {
+app.delete("/api/submissions/:id", async (req, res) => {
   const { id } = req.params;
   let subs = readSubmissionsFile();
   subs = subs.filter((s: any) => s.id !== id);
   writeSubmissionsFile(subs);
+
+  try {
+    await fetch("https://kvdb.io/6P7aX9mK1bQv3L0z8W9n/submissions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(subs)
+    });
+  } catch (e) {
+    console.warn("Failed to delete submission from Cloud KV:", e);
+  }
+
   res.json({ success: true, id });
 });
 
