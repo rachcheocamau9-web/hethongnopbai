@@ -53,6 +53,8 @@ function getDB(): Promise<IDBDatabase> {
 }
 
 export async function getCompetitions(): Promise<Competition[]> {
+  const localComps = await getCompetitionsFromLocal();
+  
   // 1. Try server endpoint
   try {
     const res = await fetch('/api/competitions');
@@ -61,8 +63,25 @@ export async function getCompetitions(): Promise<Competition[]> {
       if (text && text.trim().startsWith('{')) {
         const json = JSON.parse(text);
         if (json.success && Array.isArray(json.data)) {
-          saveAllCompetitionsLocally(json.data).catch(() => {});
-          return json.data;
+          const serverComps: Competition[] = json.data;
+          
+          // Merge server data with local cache (keep whichever is richer)
+          if (serverComps.length >= localComps.length || localComps.length === 0) {
+            saveAllCompetitionsLocally(serverComps).catch(() => {});
+            return serverComps;
+          } else {
+            // Local has extra unsynced items -> sync local items to server
+            localComps.forEach((comp) => {
+              if (!serverComps.some((s) => s.id === comp.id)) {
+                fetch('/api/competitions', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(comp),
+                }).catch(() => {});
+              }
+            });
+            return localComps;
+          }
         }
       }
     }
@@ -70,19 +89,7 @@ export async function getCompetitions(): Promise<Competition[]> {
     console.warn('API /api/competitions unavailable:', err);
   }
 
-  // 2. Try global Cloud KV fallback
-  try {
-    const cloudComps = await fetchFromCloudKV<Competition[]>('competitions');
-    if (Array.isArray(cloudComps)) {
-      saveAllCompetitionsLocally(cloudComps).catch(() => {});
-      return cloudComps;
-    }
-  } catch (err) {
-    console.warn('Cloud KV fetch for competitions failed:', err);
-  }
-
-  // 3. Fallback to local DB cache
-  return getCompetitionsFromLocal();
+  return localComps;
 }
 
 async function getCompetitionsFromLocal(): Promise<Competition[]> {
@@ -95,7 +102,7 @@ async function getCompetitionsFromLocal(): Promise<Competition[]> {
 
       request.onsuccess = () => {
         let list: Competition[] = request.result;
-        if (!list) {
+        if (!list || !Array.isArray(list)) {
           list = getCompetitionsFromLocalStorage();
         }
         resolve(list);
@@ -114,7 +121,6 @@ function getCompetitionsFromLocalStorage(): Competition[] {
   try {
     const stored = localStorage.getItem(COMPETITIONS_KEY);
     if (stored === null) {
-      localStorage.setItem(COMPETITIONS_KEY, JSON.stringify([]));
       return [];
     }
     return JSON.parse(stored);
@@ -124,7 +130,17 @@ function getCompetitionsFromLocalStorage(): Competition[] {
 }
 
 export async function saveCompetition(comp: Competition): Promise<void> {
-  // Try server API first
+  // 1. Immediately update local storage & IndexedDB so data is instantly secure
+  const currentLocal = await getCompetitionsFromLocal();
+  const index = currentLocal.findIndex((c) => c.id === comp.id);
+  if (index >= 0) {
+    currentLocal[index] = comp;
+  } else {
+    currentLocal.unshift(comp);
+  }
+  await saveAllCompetitionsLocally(currentLocal);
+
+  // 2. Persist to server API
   try {
     await fetch('/api/competitions', {
       method: 'POST',
@@ -134,36 +150,20 @@ export async function saveCompetition(comp: Competition): Promise<void> {
   } catch (err) {
     console.warn('Failed to save competition to server API:', err);
   }
-
-  // Get current list, update comp, save locally & push to Cloud KV
-  const current = await getCompetitions();
-  const index = current.findIndex((c) => c.id === comp.id);
-  if (index >= 0) {
-    current[index] = comp;
-  } else {
-    current.unshift(comp);
-  }
-
-  await Promise.all([
-    saveAllCompetitionsLocally(current),
-    saveToCloudKV('competitions', current)
-  ]).catch(() => {});
 }
 
 export async function deleteCompetition(id: string): Promise<void> {
+  // 1. Delete from local state immediately
+  const currentLocal = await getCompetitionsFromLocal();
+  const updated = currentLocal.filter((c) => c.id !== id);
+  await saveAllCompetitionsLocally(updated);
+
+  // 2. Send DELETE to server API
   try {
     await fetch(`/api/competitions/${id}`, { method: 'DELETE' });
   } catch (err) {
     console.warn('Failed to delete competition from server API:', err);
   }
-
-  const current = await getCompetitions();
-  const updated = current.filter((c) => c.id !== id);
-
-  await Promise.all([
-    saveAllCompetitionsLocally(updated),
-    saveToCloudKV('competitions', updated)
-  ]).catch(() => {});
 }
 
 async function saveAllCompetitionsLocally(competitions: Competition[]): Promise<void> {
@@ -178,15 +178,18 @@ async function saveAllCompetitionsLocally(competitions: Competition[]): Promise<
       tx.onerror = () => reject(tx.error);
     });
   } catch {
-    try {
-      localStorage.setItem(COMPETITIONS_KEY, JSON.stringify(competitions));
-    } catch (e) {
-      console.warn('LocalStorage quota exceeded for competitions', e);
-    }
+    // Fallback to LocalStorage
+  }
+  try {
+    localStorage.setItem(COMPETITIONS_KEY, JSON.stringify(competitions));
+  } catch (e) {
+    console.warn('LocalStorage quota exceeded for competitions', e);
   }
 }
 
 export async function getSubmissions(): Promise<Submission[]> {
+  const localSubs = await getSubmissionsFromLocal();
+
   // 1. Try server endpoint
   try {
     const res = await fetch('/api/submissions');
@@ -195,8 +198,24 @@ export async function getSubmissions(): Promise<Submission[]> {
       if (text && text.trim().startsWith('{')) {
         const json = JSON.parse(text);
         if (json.success && Array.isArray(json.data)) {
-          saveAllSubmissionsLocally(json.data).catch(() => {});
-          return json.data;
+          const serverSubs: Submission[] = json.data;
+
+          if (serverSubs.length >= localSubs.length || localSubs.length === 0) {
+            saveAllSubmissionsLocally(serverSubs).catch(() => {});
+            return serverSubs;
+          } else {
+            // Sync missing local submissions to server
+            localSubs.forEach((sub) => {
+              if (!serverSubs.some((s) => s.id === sub.id)) {
+                fetch('/api/submissions', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(sub),
+                }).catch(() => {});
+              }
+            });
+            return localSubs;
+          }
         }
       }
     }
@@ -204,19 +223,7 @@ export async function getSubmissions(): Promise<Submission[]> {
     console.warn('API /api/submissions unavailable:', err);
   }
 
-  // 2. Try global Cloud KV fallback
-  try {
-    const cloudSubs = await fetchFromCloudKV<Submission[]>('submissions');
-    if (Array.isArray(cloudSubs)) {
-      saveAllSubmissionsLocally(cloudSubs).catch(() => {});
-      return cloudSubs;
-    }
-  } catch (err) {
-    console.warn('Cloud KV fetch for submissions failed:', err);
-  }
-
-  // 3. Local fallback
-  return getSubmissionsFromLocal();
+  return localSubs;
 }
 
 async function getSubmissionsFromLocal(): Promise<Submission[]> {
@@ -229,7 +236,7 @@ async function getSubmissionsFromLocal(): Promise<Submission[]> {
 
       request.onsuccess = () => {
         let list: Submission[] = request.result;
-        if (!list) {
+        if (!list || !Array.isArray(list)) {
           list = getSubmissionsFromLocalStorage();
         }
         list.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
@@ -249,7 +256,6 @@ function getSubmissionsFromLocalStorage(): Submission[] {
   try {
     const stored = localStorage.getItem(SUBMISSIONS_KEY);
     if (stored === null) {
-      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
       return [];
     }
     return JSON.parse(stored);
@@ -259,6 +265,17 @@ function getSubmissionsFromLocalStorage(): Submission[] {
 }
 
 export async function addSubmission(submission: Submission): Promise<void> {
+  // 1. Save locally immediately
+  const currentLocal = await getSubmissionsFromLocal();
+  const idx = currentLocal.findIndex((s) => s.id === submission.id);
+  if (idx >= 0) {
+    currentLocal[idx] = submission;
+  } else {
+    currentLocal.unshift(submission);
+  }
+  await saveAllSubmissionsLocally(currentLocal);
+
+  // 2. Post to server API
   try {
     await fetch('/api/submissions', {
       method: 'POST',
@@ -268,83 +285,20 @@ export async function addSubmission(submission: Submission): Promise<void> {
   } catch (err: any) {
     console.warn('Failed to post submission to server API:', err);
   }
-
-  const current = await getSubmissions();
-  const idx = current.findIndex(s => s.id === submission.id);
-  if (idx >= 0) {
-    current[idx] = submission;
-  } else {
-    current.unshift(submission);
-  }
-
-  await Promise.all([
-    saveSubmissionLocally(submission),
-    saveToCloudKV('submissions', current)
-  ]).catch(() => {});
-}
-
-async function saveSubmissionLocally(submission: Submission): Promise<void> {
-  try {
-    const db = await getDB();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('submissions', 'readwrite');
-      const store = tx.objectStore('submissions');
-      const req = store.put(submission);
-
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error || tx.error);
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch (err) {
-    console.warn('IndexedDB put failed, falling back to localStorage safely', err);
-    try {
-      const list = getSubmissionsFromLocalStorage();
-      list.unshift(submission);
-      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(list));
-    } catch (quotaErr) {
-      console.warn('LocalStorage quota exceeded, storing submission metadata without large fileData', quotaErr);
-      try {
-        const lightweightSub = {
-          ...submission,
-          fileData: submission.fileData.substring(0, 100) + '... (Tệp đã được ghi nhận)'
-        };
-        const list = getSubmissionsFromLocalStorage();
-        list.unshift(lightweightSub);
-        localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(list));
-      } catch (e) {
-        console.error('Failed to write to localStorage altogether', e);
-      }
-    }
-  }
 }
 
 export async function deleteSubmission(id: string): Promise<void> {
+  // 1. Delete from local state immediately
+  const currentLocal = await getSubmissionsFromLocal();
+  const updated = currentLocal.filter(s => s.id !== id);
+  await saveAllSubmissionsLocally(updated);
+
+  // 2. Send DELETE to server API
   try {
     await fetch(`/api/submissions/${id}`, { method: 'DELETE' });
   } catch (err) {
     console.warn('Failed to delete submission on server API:', err);
   }
-
-  const current = await getSubmissions();
-  const updated = current.filter(s => s.id !== id);
-
-  try {
-    const db = await getDB();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('submissions', 'readwrite');
-      const store = tx.objectStore('submissions');
-      const req = store.delete(id);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch {
-    try {
-      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(updated));
-    } catch {}
-  }
-
-  saveToCloudKV('submissions', updated).catch(() => {});
 }
 
 async function saveAllSubmissionsLocally(submissions: Submission[]): Promise<void> {
