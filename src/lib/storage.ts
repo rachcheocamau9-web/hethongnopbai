@@ -4,78 +4,12 @@ import { fetchFromCloudKV, saveToCloudKV } from './cloudStore';
 const COMPETITIONS_KEY = 'tro_ly_nop_tai_lieu_competitions_v1';
 const SUBMISSIONS_KEY = 'tro_ly_nop_tai_lieu_submissions_v1';
 
-// Initial default competitions to show on first load
-const DEFAULT_COMPETITIONS: Competition[] = [
-  {
-    id: 'comp-1',
-    title: 'Cuộc Thi Sáng Tạo Thiết Kế & Ý Tưởng 2026',
-    description: 'Nộp bài thi sáng tạo, đồ án hoặc báo cáo ý tưởng thiết kế dạng PDF hoặc Hình ảnh chất lượng cao.',
-    startDate: '2026-07-01T08:00',
-    endDate: '2026-12-31T23:59',
-    allowedTypes: ['pdf', 'image'],
-    maxFileSizeMb: 25,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'comp-2',
-    title: 'Cuộc Thi Nghiên Cứu Khoa Học Sinh Viên',
-    description: 'Nộp tóm tắt báo cáo khoa học, sơ đồ minh họa và kết quả nghiên cứu. Yêu cầu định dạng PDF.',
-    startDate: '2026-06-15T00:00',
-    endDate: '2026-08-30T17:00',
-    allowedTypes: ['pdf', 'image'],
-    maxFileSizeMb: 20,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'comp-3',
-    title: 'Hội Thi Nhếp Ảnh & Truyền Thông Thương Hiệu',
-    description: 'Nộp tác phẩm dự thi gồm hình ảnh chụp thực tế hoặc poster thiết kế (PNG, JPG, WEBP).',
-    startDate: '2026-07-10T08:00',
-    endDate: '2026-11-20T23:59',
-    allowedTypes: ['image'],
-    maxFileSizeMb: 15,
-    createdAt: new Date().toISOString(),
-  }
-];
-
-// Initial default sample submission so admin and excel export are testable immediately
-const DEFAULT_SUBMISSIONS: Submission[] = [
-  {
-    id: 'SUB-2026-8812',
-    competitionId: 'comp-1',
-    competitionTitle: 'Cuộc Thi Sáng Tạo Thiết Kế & Ý Tưởng 2026',
-    fullName: 'Nguyễn Văn An',
-    phoneNumber: '0901234567',
-    email: 'nguyenvanan@gmail.com',
-    studentCode: 'SV202601',
-    notes: 'Bài dự thi thiết kế giao diện ứng dụng di động thông minh.',
-    fileName: 'Thiet_Ke_Giao_Dien_NguyenVanAn.pdf',
-    fileSize: 2458000,
-    fileType: 'application/pdf',
-    fileData: 'data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iaiA8PAovVHlwZSAvQ2F0YWxvZwovUGFnZXMgMiAwIFIgPj4gZW5kb2JqCjIgMCBvYmogPDAKL1R5cGUgL1BhZ2VzCi9Db3VudCAxCi9LaWRzIFsgMyAwIFIgXSA+PiBlbmRvYmoKMyAwIG9iaiA8PAovVHlwZSAvUGFnZQovUGFyZW50IDIgMCBSCi9NZWRpYUJveCBbIDAgMCA2MTIgNzkyIF0KL1Jlc291cmNlcyA8PCA+Pgo+PiBlbmRvYmoKdHJhaWxlciA8PAovUm9vdCAxIDAgUgo+PgpzdGFydHhyZWYKMTczCiUlRU9G',
-    submittedAt: '2026-07-20T14:30:00.000Z',
-    status: 'approved',
-  },
-  {
-    id: 'SUB-2026-9041',
-    competitionId: 'comp-1',
-    competitionTitle: 'Cuộc Thi Sáng Tạo Thiết Kế & Ý Tưởng 2026',
-    fullName: 'Trần Thị Mai',
-    phoneNumber: '0987654321',
-    email: 'tranmai@gmail.com',
-    studentCode: 'SV202609',
-    notes: 'File thiết kế poster truyền thông cuộc thi.',
-    fileName: 'Poster_Duan_TranThiMai.png',
-    fileSize: 1840000,
-    fileType: 'image/png',
-    fileData: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-    submittedAt: '2026-07-21T09:15:00.000Z',
-    status: 'pending',
-  }
-];
+// Initial defaults are empty so user deleted state is respected
+const DEFAULT_COMPETITIONS: Competition[] = [];
+const DEFAULT_SUBMISSIONS: Submission[] = [];
 
 // IndexedDB database setup for large file storage
-const DB_NAME = 'TroLyNopTaiLieuDB';
+const DB_NAME = 'TroLyNopTaiLieuDB_v2';
 const DB_VERSION = 1;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -126,7 +60,7 @@ export async function getCompetitions(): Promise<Competition[]> {
       const text = await res.text();
       if (text && text.trim().startsWith('{')) {
         const json = JSON.parse(text);
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        if (json.success && Array.isArray(json.data)) {
           saveAllCompetitionsLocally(json.data).catch(() => {});
           return json.data;
         }
@@ -139,7 +73,7 @@ export async function getCompetitions(): Promise<Competition[]> {
   // 2. Try global Cloud KV fallback
   try {
     const cloudComps = await fetchFromCloudKV<Competition[]>('competitions');
-    if (Array.isArray(cloudComps) && cloudComps.length > 0) {
+    if (Array.isArray(cloudComps)) {
       saveAllCompetitionsLocally(cloudComps).catch(() => {});
       return cloudComps;
     }
@@ -160,8 +94,8 @@ async function getCompetitionsFromLocal(): Promise<Competition[]> {
       const request = store.getAll();
 
       request.onsuccess = () => {
-        let list: Competition[] = request.result || [];
-        if (list.length === 0) {
+        let list: Competition[] = request.result;
+        if (!list) {
           list = getCompetitionsFromLocalStorage();
         }
         resolve(list);
@@ -179,13 +113,13 @@ async function getCompetitionsFromLocal(): Promise<Competition[]> {
 function getCompetitionsFromLocalStorage(): Competition[] {
   try {
     const stored = localStorage.getItem(COMPETITIONS_KEY);
-    if (!stored) {
-      localStorage.setItem(COMPETITIONS_KEY, JSON.stringify(DEFAULT_COMPETITIONS));
-      return DEFAULT_COMPETITIONS;
+    if (stored === null) {
+      localStorage.setItem(COMPETITIONS_KEY, JSON.stringify([]));
+      return [];
     }
     return JSON.parse(stored);
   } catch {
-    return DEFAULT_COMPETITIONS;
+    return [];
   }
 }
 
@@ -260,7 +194,7 @@ export async function getSubmissions(): Promise<Submission[]> {
       const text = await res.text();
       if (text && text.trim().startsWith('{')) {
         const json = JSON.parse(text);
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        if (json.success && Array.isArray(json.data)) {
           saveAllSubmissionsLocally(json.data).catch(() => {});
           return json.data;
         }
@@ -273,7 +207,7 @@ export async function getSubmissions(): Promise<Submission[]> {
   // 2. Try global Cloud KV fallback
   try {
     const cloudSubs = await fetchFromCloudKV<Submission[]>('submissions');
-    if (Array.isArray(cloudSubs) && cloudSubs.length > 0) {
+    if (Array.isArray(cloudSubs)) {
       saveAllSubmissionsLocally(cloudSubs).catch(() => {});
       return cloudSubs;
     }
@@ -294,8 +228,8 @@ async function getSubmissionsFromLocal(): Promise<Submission[]> {
       const request = store.getAll();
 
       request.onsuccess = () => {
-        let list: Submission[] = request.result || [];
-        if (list.length === 0) {
+        let list: Submission[] = request.result;
+        if (!list) {
           list = getSubmissionsFromLocalStorage();
         }
         list.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
@@ -314,13 +248,13 @@ async function getSubmissionsFromLocal(): Promise<Submission[]> {
 function getSubmissionsFromLocalStorage(): Submission[] {
   try {
     const stored = localStorage.getItem(SUBMISSIONS_KEY);
-    if (!stored) {
-      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(DEFAULT_SUBMISSIONS));
-      return DEFAULT_SUBMISSIONS;
+    if (stored === null) {
+      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
+      return [];
     }
     return JSON.parse(stored);
   } catch {
-    return DEFAULT_SUBMISSIONS;
+    return [];
   }
 }
 

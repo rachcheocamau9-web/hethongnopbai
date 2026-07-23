@@ -21,85 +21,20 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-const DEFAULT_SERVER_COMPETITIONS = [
-  {
-    id: "comp-1",
-    title: "Cuộc Thi Sáng Tạo Thiết Kế & Ý Tưởng 2026",
-    description: "Nộp bài thi sáng tạo, đồ án hoặc báo cáo ý tưởng thiết kế dạng PDF hoặc Hình ảnh chất lượng cao.",
-    startDate: "2026-07-01T08:00",
-    endDate: "2026-12-31T23:59",
-    allowedTypes: ["pdf", "image"],
-    maxFileSizeMb: 25,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "comp-2",
-    title: "Cuộc Thi Nghiên Cứu Khoa Học Sinh Viên",
-    description: "Nộp tóm tắt báo cáo khoa học, sơ đồ minh họa và kết quả nghiên cứu. Yêu cầu định dạng PDF.",
-    startDate: "2026-06-15T00:00",
-    endDate: "2026-08-30T17:00",
-    allowedTypes: ["pdf", "image"],
-    maxFileSizeMb: 20,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "comp-3",
-    title: "Hội Thi Nhiếp Ảnh & Truyền Thông Thương Hiệu",
-    description: "Nộp tác phẩm dự thi gồm hình ảnh chụp thực tế hoặc poster thiết kế (PNG, JPG, WEBP).",
-    startDate: "2026-07-10T08:00",
-    endDate: "2026-11-20T23:59",
-    allowedTypes: ["image"],
-    maxFileSizeMb: 15,
-    createdAt: new Date().toISOString(),
-  }
-];
-
-const DEFAULT_SERVER_SUBMISSIONS = [
-  {
-    id: "SUB-2026-8812",
-    competitionId: "comp-1",
-    competitionTitle: "Cuộc Thi Sáng Tạo Thiết Kế & Ý Tưởng 2026",
-    fullName: "Nguyễn Văn An",
-    phoneNumber: "0901234567",
-    email: "nguyenvanan@gmail.com",
-    studentCode: "SV202601",
-    notes: "Bài dự thi thiết kế giao diện ứng dụng di động thông minh.",
-    fileName: "Thiet_Ke_Giao_Dien_NguyenVanAn.pdf",
-    fileSize: 2458000,
-    fileType: "application/pdf",
-    fileData: "data:application/pdf;base64,JVBERi0xLjQKJ...",
-    submittedAt: "2026-07-20T14:30:00.000Z",
-    status: "approved",
-  },
-  {
-    id: "SUB-2026-9041",
-    competitionId: "comp-1",
-    competitionTitle: "Cuộc Thi Sáng Tạo Thiết Kế & Ý Tưởng 2026",
-    fullName: "Trần Thị Mai",
-    phoneNumber: "0987654321",
-    email: "tranmai@gmail.com",
-    studentCode: "SV202609",
-    notes: "File thiết kế poster truyền thông cuộc thi.",
-    fileName: "Poster_Duan_TranThiMai.png",
-    fileSize: 1840000,
-    fileType: "image/png",
-    fileData: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-    submittedAt: "2026-07-21T09:15:00.000Z",
-    status: "pending",
-  }
-];
+const DEFAULT_SERVER_COMPETITIONS: any[] = [];
+const DEFAULT_SERVER_SUBMISSIONS: any[] = [];
 
 function readCompetitionsFile() {
   try {
     if (!fs.existsSync(COMPS_FILE)) {
-      fs.writeFileSync(COMPS_FILE, JSON.stringify(DEFAULT_SERVER_COMPETITIONS, null, 2), "utf-8");
-      return DEFAULT_SERVER_COMPETITIONS;
+      fs.writeFileSync(COMPS_FILE, JSON.stringify([], null, 2), "utf-8");
+      return [];
     }
     const data = fs.readFileSync(COMPS_FILE, "utf-8");
     return JSON.parse(data);
   } catch (e) {
     console.error("Error reading competitions file:", e);
-    return DEFAULT_SERVER_COMPETITIONS;
+    return [];
   }
 }
 
@@ -114,14 +49,14 @@ function writeCompetitionsFile(data: any) {
 function readSubmissionsFile() {
   try {
     if (!fs.existsSync(SUBS_FILE)) {
-      fs.writeFileSync(SUBS_FILE, JSON.stringify(DEFAULT_SERVER_SUBMISSIONS, null, 2), "utf-8");
-      return DEFAULT_SERVER_SUBMISSIONS;
+      fs.writeFileSync(SUBS_FILE, JSON.stringify([], null, 2), "utf-8");
+      return [];
     }
     const data = fs.readFileSync(SUBS_FILE, "utf-8");
     return JSON.parse(data);
   } catch (e) {
     console.error("Error reading submissions file:", e);
-    return DEFAULT_SERVER_SUBMISSIONS;
+    return [];
   }
 }
 
@@ -169,7 +104,7 @@ app.get("/api/competitions", async (req, res) => {
       const text = await kvRes.text();
       if (text && text.trim().startsWith("[")) {
         const cloudComps = JSON.parse(text);
-        if (Array.isArray(cloudComps) && cloudComps.length > 0) {
+        if (Array.isArray(cloudComps)) {
           comps = cloudComps;
           writeCompetitionsFile(comps);
         }
@@ -237,7 +172,7 @@ app.get("/api/submissions", async (req, res) => {
       const text = await kvRes.text();
       if (text && text.trim().startsWith("[")) {
         const cloudSubs = JSON.parse(text);
-        if (Array.isArray(cloudSubs) && cloudSubs.length > 0) {
+        if (Array.isArray(cloudSubs)) {
           subs = cloudSubs;
           writeSubmissionsFile(subs);
         }

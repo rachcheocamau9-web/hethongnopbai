@@ -2,40 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const KV_BASE_URL = "https://kvdb.io/6P7aX9mK1bQv3L0z8W9n";
 
-const DEFAULT_SUBMISSIONS = [
-  {
-    id: "SUB-2026-8812",
-    competitionId: "comp-1",
-    competitionTitle: "Cuộc Thi Sáng Tạo Thiết Kế & Ý Tưởng 2026",
-    fullName: "Nguyễn Văn An",
-    phoneNumber: "0901234567",
-    email: "nguyenvanan@gmail.com",
-    studentCode: "SV202601",
-    notes: "Bài dự thi thiết kế giao diện ứng dụng di động thông minh.",
-    fileName: "Thiet_Ke_Giao_Dien_NguyenVanAn.pdf",
-    fileSize: 2458000,
-    fileType: "application/pdf",
-    fileData: "data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iaiA8PAovVHlwZSAvQ2F0YWxvZwovUGFnZXMgMiAwIFIgPj4gZW5kb2JqCjIgMCBvYmogPDAKL1R5cGUgL1BhZ2VzCi9Db3VudCAxCi9LaWRzIFsgMyAwIFIgXSA+PiBlbmRvYmoKMyAwIG9iaiA8PAovVHlwZSAvUGFnZQovUGFyZW50IDIgMCBSCi9NZWRpYUJveCBbIDAgMCA2MTIgNzkyIF0KL1Jlc291cmNlcyA8PCA+Pgo+PiBlbmRvYmoKdHJhaWxlciA8PAovUm9vdCAxIDAgUgo+PgpzdGFydHhyZWYKMTczCiUlRU9G",
-    submittedAt: "2026-07-20T14:30:00.000Z",
-    status: "approved",
-  },
-  {
-    id: "SUB-2026-9041",
-    competitionId: "comp-1",
-    competitionTitle: "Cuộc Thi Sáng Tạo Thiết Kế & Ý Tưởng 2026",
-    fullName: "Trần Thị Mai",
-    phoneNumber: "0987654321",
-    email: "tranmai@gmail.com",
-    studentCode: "SV202609",
-    notes: "File thiết kế poster truyền thông cuộc thi.",
-    fileName: "Poster_Duan_TranThiMai.png",
-    fileSize: 1840000,
-    fileType: "image/png",
-    fileData: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-    submittedAt: "2026-07-21T09:15:00.000Z",
-    status: "pending",
-  }
-];
+const DEFAULT_SUBMISSIONS: any[] = [];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -60,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const text = await kvRes.text();
           if (text && text.trim().startsWith("[")) {
             const data = JSON.parse(text);
-            if (Array.isArray(data) && data.length > 0) {
+            if (Array.isArray(data)) {
               subs = data;
             }
           }

@@ -2,38 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const KV_BASE_URL = "https://kvdb.io/6P7aX9mK1bQv3L0z8W9n";
 
-const DEFAULT_COMPETITIONS = [
-  {
-    id: "comp-1",
-    title: "Cuộc Thi Sáng Tạo Thiết Kế & Ý Tưởng 2026",
-    description: "Nộp bài thi sáng tạo, đồ án hoặc báo cáo ý tưởng thiết kế dạng PDF hoặc Hình ảnh chất lượng cao.",
-    startDate: "2026-07-01T08:00",
-    endDate: "2026-12-31T23:59",
-    allowedTypes: ["pdf", "image"],
-    maxFileSizeMb: 25,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "comp-2",
-    title: "Cuộc Thi Nghiên Cứu Khoa Học Sinh Viên",
-    description: "Nộp tóm tắt báo cáo khoa học, sơ đồ minh họa và kết quả nghiên cứu. Yêu cầu định dạng PDF.",
-    startDate: "2026-06-15T00:00",
-    endDate: "2026-08-30T17:00",
-    allowedTypes: ["pdf", "image"],
-    maxFileSizeMb: 20,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "comp-3",
-    title: "Hội Thi Nhiếp Ảnh & Truyền Thông Thương Hiệu",
-    description: "Nộp tác phẩm dự thi gồm hình ảnh chụp thực tế hoặc poster thiết kế (PNG, JPG, WEBP).",
-    startDate: "2026-07-10T08:00",
-    endDate: "2026-11-20T23:59",
-    allowedTypes: ["image"],
-    maxFileSizeMb: 15,
-    createdAt: new Date().toISOString(),
-  }
-];
+const DEFAULT_COMPETITIONS: any[] = [];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS Headers
@@ -59,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const text = await kvRes.text();
           if (text && text.trim().startsWith("[")) {
             const data = JSON.parse(text);
-            if (Array.isArray(data) && data.length > 0) {
+            if (Array.isArray(data)) {
               comps = data;
             }
           }
