@@ -1,0 +1,6 @@
+{
+  "name": "Trợ Lý Nộp Tài Liệu & Quản Lý Cuộc Thi",
+  "description": "Hệ thống nộp tài liệu cuộc thi hỗ trợ file PDF, ảnh, xuất file Excel và giao diện Admin bảo mật.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
